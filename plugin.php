@@ -38,6 +38,7 @@ class FileProConnector {
 	 */
 	public function __construct() {
 		add_shortcode('filepro', array($this, 'show_files' ) );
+		add_action('admin_menu', array($this, 'admin_menu') );
 	} // end constructor
 	
 
@@ -47,21 +48,15 @@ class FileProConnector {
 	   	   $showfolders = ( isset( $atts['showfolders'] ) ? $atts['showfolders'] : true );
 	   	   $newfirst = ( isset( $atts['showfolders'] ) ? $atts['showfolders'] : true );
 	   	   $iterate = ( isset( $atts['iterate'] ) ? $atts['iterate'] : false );
-	   	   $mastercount = ( isset( $atts['mastercount'] ) ? $atts['mastercount'] : false );
+	   	   $mastercount = ( isset( $atts['mastercount'] ) ? $atts['mastercount'] : 0 );
 		   $logon_result = $this->fplog_on('','');
 		   $output="";
+		   echo "<pre>";
+		   print_r($atts);
+		   echo $iterate;
+		   echo "</pre>";
 			if ($logon_result['success']) {
-				$output.= "<ul>";
-				extract(shortcode_atts(array(
-					'limit' => 0,
-					'showfolders' => true,
-					'newfirst' => true,
-					'iterate' => true,
-					'mastercount' => 0,
-
-				), $atts ) );
-				$output.= $this->ShowFilesFromFilePro( 7278, $logon_result['session_id'], $limit, $showfolders, $newfirst, $iterate, $mastercount );
-				$output.= "</ul>";
+				$output.= $this->ShowFilesFromFilePro( $atts['id'], $logon_result['session_id'], $limit, $showfolders, $newfirst, $iterate, $mastercount );
 			}
 			else {
 				$output.= "Unable to connect to FilePro";
@@ -98,8 +93,8 @@ class FileProConnector {
 		$output = "";
 		$docs = array();
 	
-		$civicweb_url = 'https://norfolk.civicweb.net/';
-		$client = @new SoapClient($civicweb_url . 'Global/WebServices/Document.asmx?wsdl', array('exceptions' => 1,));
+		$civicweb_url = get_option('wp_filepro_server');
+		$client = @new SoapClient($civicweb_url . '/Global/WebServices/Document.asmx?wsdl', array('exceptions' => 1,));
 		$client->__setCookie('CurrentSession', $session_id);
 		$parameters = new stdClass();
 		$parameters->id = $id;
@@ -118,59 +113,56 @@ class FileProConnector {
 		}
 	
 		if(sizeof($docs)>0) {
-			if($iterate && $showfolders) {
-				$output.= "<ul>";
-			}
-		$docarray = array();
-		if($limit==0 || $limit >= sizeof($docs)) $mylimit=sizeof($docs);
-		else $mylimit = $limit;
-		
-		for ($i=0;$i<$mylimit;$i++) {
-				$doc = $docs[$i];
-				
-			if($doc->Folder) {
-				if($showfolders) {
-					$output.= '<li><a href="#">'.$doc->Name.'</a></li>';
+			$output.= "<ul>";
+			$docarray = array();
+			if($limit==0 || $limit >= sizeof($docs)) $mylimit=sizeof($docs);
+			else $mylimit = $limit;
+			
+			for ($i=0;$i<$mylimit;$i++) {
+					$doc = $docs[$i];
+					
+				if($doc->Folder) {
+					if($showfolders) {
+						if($iterate) {
+							$output.= '<li><a href="#">'.$doc->Name.'</a>';
+						} 
+						else {
+							$output.= '<li><a href="' . $civicweb_url . 'Documents/DocumentList.aspx?ID=' . $doc->ID . '">'.$doc->Name.'</a>';	
+						}
+					}
+					if($iterate) {
+						$output.= $this->ShowFilesFromFilePro($doc->ID,$session_id,$limit,$showfolders,$newfirst,true,$mastercount);
+					}
+					if($showfolders) {
+						$output.= '</li>';
+					}
+				} 
+				else {
+					$docarray[$i] = '<li><a href="' . $civicweb_url . 'Documents/DocumentDisplay.aspx?ID=' . $doc->ID . '&Original=1">'.$doc->Name.'</a></li>';
+					$mastercount++;
 				}
-				if($mastercount!=$limit) {
-					$output.= ShowFilesFromFilePro($doc->ID,$session_id,$limit,$showfolders,$newfirst,true,$mastercount);
-				}
-			} 
-			else {
-				$docarray[$i] = '<li><a href="' . $civicweb_url . 'Documents/DocumentDisplay.aspx?ID=' . $doc->ID . '&Original=1">'.$doc->Name.'</a></li>';
-				$mastercount++;
 			}
-		}
-		if($newfirst) {
-				$docarray = array_reverse($docarray);
-		}
-		foreach($docarray as $doc ) {
-			$output.= $doc;
-		}
-		if($iterate && $showfolders) {
+			if($newfirst) {
+					$docarray = array_reverse($docarray);
+			}
+			foreach($docarray as $doc ) {
+				$output.= $doc;
+			}
 			$output.= "</ul>";
 		}
-	}
-	else {
-		$output.= "<p>No documents found.</p>";
-
-	}
-
+		else {
+			$output.= "<p>No documents found.</p>";
+		}
 	return $output;
-
-}// end action_method_name
+	}// end action_method_name
 	
-	/**
-	 * NOTE:  Filters are points of execution in which WordPress modifies data
-	 *        before saving it or sending it to the browser.
-	 *
-	 *		  WordPress Filters: http://codex.wordpress.org/Plugin_API#Filters
-	 *		  Filter Reference:  http://codex.wordpress.org/Plugin_API/Filter_Reference
-	 *
-	 */
-	function filter_method_name() {
-	    // TODO:	Define your filter method here
-	} // end filter_method_name
+	public function admin_menu () {
+		add_options_page('WP-Filepro Settings','WP-Filepro','manage_options','wp_filepro_options',array( $this, 'settings_page' ) );
+	}
+	public function  settings_page () {
+		include('views/admin.php');
+	}
+
   
 } // end class
 
